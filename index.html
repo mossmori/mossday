@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOSSMORI Quest Planner</title>
+<style>
+@font-face{font-family:'DungGeunMo';src:url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/DungGeunMo.woff') format('woff');font-weight:normal;font-style:normal}
+*{box-sizing:border-box}
+body{background:#9ec98c url('bg.jpg') center top/cover fixed no-repeat;margin:0;padding:24px 12px;font-family:'DungGeunMo','Malgun Gothic',sans-serif;display:flex;justify-content:center;image-rendering:pixelated}
+#wrap{max-width:780px;width:100%}
+button{font-family:'DungGeunMo','Malgun Gothic',sans-serif}
+input,select{font-family:'DungGeunMo','Malgun Gothic',sans-serif}
+.wood{background:#8a5a35;color:#f6eed3;border:3px solid #5e3a1e;border-radius:6px;cursor:pointer;padding:6px 12px;font-size:12px;box-shadow:inset 0 -3px 0 #6d4426}
+.wood:active{box-shadow:inset 0 3px 0 #6d4426}
+.wood:disabled{opacity:.5;cursor:default}
+.green-btn{background:#6fae4e;color:#fff;border:3px solid #4c7d33;border-radius:6px;cursor:pointer;padding:7px 16px;font-size:13px;box-shadow:inset 0 -3px 0 #578b3c}
+.green-btn:active{box-shadow:inset 0 3px 0 #578b3c}
+.panel{background:#f6eed3;border:4px solid #7a5230;border-radius:10px;box-shadow:0 0 0 3px #a97c50, 0 6px 0 3px #6d4426;padding:14px}
+.board{background:#6e9960;border:4px solid #7a5230;border-radius:10px;box-shadow:0 0 0 3px #a97c50, 0 6px 0 3px #6d4426;padding:14px}
+.sign{display:inline-block;background:#8a5a35;color:#f6eed3;border:3px solid #5e3a1e;border-radius:8px;padding:8px 18px;box-shadow:0 4px 0 #5e3a1e;letter-spacing:1px}
+.qcard{background:#fdf6dd;border:3px solid #a97c50;border-radius:8px;padding:6px 10px;margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.qcard.done{background:#e4eecb;border-color:#8fae6a}
+@keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes floatup{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-40px);opacity:0}}
+.xp-float{position:absolute;font-size:14px;color:#4c7d33;background:#fdf6dd;border:2px solid #7a5230;border-radius:8px;padding:3px 8px;animation:floatup 1.2s ease-out forwards;pointer-events:none;z-index:9}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div style="text-align:center;margin-bottom:14px">
+ <img src="title.png" alt="MOSSMORI QUEST PLANNER" style="max-width:400px;width:80%;image-rendering:pixelated">
+</div>
+<div id="hud-root" style="position:relative;min-height:400px"></div>
+</div>
+<script>
+/* ===== 설정 상수 (여기서 조정) ===== */
+const START_ISO="2026-07-27T00:00:00";
+const STATS=[{id:"cert",name:"자격증",goal:300,total:12},{id:"port",name:"포트폴리오",goal:400,total:16},{id:"resume",name:"이력서 준비",goal:150,total:6},{id:"interview",name:"면접 준비",goal:150,total:5}];
+const LEVELS=[{pct:0,title:"새싹 이끼 · 새내기 지원자"},{pct:25,title:"이끼 뭉치 · 견습 파이프라이너"},{pct:50,title:"화분 이끼 · 숙련 데이터 장인"},{pct:75,title:"어린 나무 · 면접장의 검투사"},{pct:100,title:"거대한 숲 · 취업 마스터"}];
+const MASCOTS=["🌱","🌿","🪴","🌳","🌲"];
+const TH_UP=80,TH_DOWN=50;
+const BADGES=[{pct:25,name:"첫 발걸음"},{pct:50,name:"절반의 증명"},{pct:75,name:"막바지 스퍼트"},{pct:100,name:"전설의 합격자"}];
+const EXPECT={port:[[0,0],[4,4],[7,9],[10,16],[99,16]],cert:[[0,0],[4,5],[7,9],[10,9],[14,12],[99,12]],resume:[[0,0],[7,1],[10,4],[14,6],[99,6]],interview:[[0,0],[7,0],[10,2],[14,5],[99,5]]};
+const PHASES=[
+ {from:1,to:4,name:"1단계 · SQLD + 포트폴리오 1 시작",range:"7/27~8/22",mix:{cert:.5,port:.5,resume:0,interview:0},certTag:"sqld"},
+ {from:5,to:7,name:"2단계 · 포트폴리오 1 완성 + AWS",range:"8/23~9/12",mix:{cert:.4,port:.5,resume:.1,interview:0},certTag:"aws"},
+ {from:8,to:10,name:"3단계 · 포트폴리오 2 + 지원 시작",range:"9/13~9/30",mix:{cert:.15,port:.4,resume:.3,interview:.15},certTag:"aws"},
+ {from:11,to:99,name:"4단계 · 지원 올인 + 정처기 실기",range:"10/1~",mix:{cert:.3,port:0,resume:.3,interview:.4},certTag:"jeongcheo"}
+];
+const PORT_SEQ=[
+ {t:"[P1-⓪] 최종본 아키텍처(p12~17) 내 언어로 정리",d:1},{t:"[P1-①] 뉴스 크롤링 스크립트 혼자 재작성",d:1},{t:"[P1-②] 제목 기준 중복 제거 함수 혼자 구현",d:2},{t:"[P1-③] TF-IDF·코사인 유사도 중복 필터링 재구현",d:3},{t:"[P1-④] MariaDB 적재 코드 작성",d:2},{t:"[P1-⑤] Airflow DAG 스케줄 연결",d:3},{t:"[P1-⑥] S3 적재 단계 추가",d:2},{t:"[P1-⑦] Docker 실행 환경 정리",d:3},{t:"[P1-⑧] 파이프라인 처음부터 재실행 검증",d:2},
+ {t:"[P2-①] TMDB 수집 + 오류 주입 스크립트",d:2},{t:"[P2-②] fuzzy matching 정제 로직 구현",d:3},{t:"[P2-③] 정제 정확도 측정 스크립트",d:2},{t:"[P2-④] S3 적재 + Airflow 연결 (뼈대 재사용)",d:2},{t:"[P2-⑤] BigQuery 적재 시도",d:3},{t:"[P2-⑥] 복합 지표 mart 쿼리 작성",d:3},{t:"[P2-⑦] README + 정확도 수치 정리",d:1}];
+const CERT_POOL={
+ sqld:[{t:"SQLD 기출 1회분 풀기",d:1},{t:"SQLD 오답 정리",d:1},{t:"SQLD 취약 파트 반복",d:2},{t:"SQLD 모의고사 실전 타이머",d:3},{t:"프로그래머스 SQL Kit (GROUP BY·JOIN)",d:2},{t:"SQLD 요약서 1회독",d:1},{t:"프로그래머스 SQL Kit (서브쿼리)",d:2}],
+ aws:[{t:"AWS CLF 강의 1챕터",d:2},{t:"AWS 덤프 20문제",d:2},{t:"AWS CLF 모의고사 1회",d:3},{t:"S3·IAM 콘솔 직접 만져보기",d:1},{t:"EC2 프리티어 인스턴스 띄워보기",d:2}],
+ jeongcheo:[{t:"정처기 실기 단원 1개 정리",d:2},{t:"정처기 SQL·의사코드 문제",d:2},{t:"정처기 실기 기출 1회분",d:3},{t:"정처기 오답 정리",d:1}]};
+const RESUME_POOL=[{t:"세 줄 기록 주간 정리",d:1},{t:"포트폴리오 README 다듬기",d:2},{t:"채용공고 5개 분석·키워드 추출",d:1},{t:"지원서 1건 제출",d:2},{t:"자기소개서 초안 작성",d:2},{t:"경력기술서 문구 점검",d:1}];
+const INTERVIEW_POOL=[{t:"예상 질문 3개 답변 작성",d:1},{t:"포트폴리오 3분 설명 스크립트",d:2},{t:"'왜 이렇게 짰나' 셀프 코드리뷰",d:2},{t:"경력 스토리 말하기 연습",d:1},{t:"모의 기술면접 셀프 녹음",d:3},{t:"TF-IDF·코사인 유사도 개념 설명 연습",d:2},{t:"모델 실험(p32~36) 개선 스토리 말하기 연습",d:2}];
+const XP={1:10,2:20,3:30};
+const ENCOURAGE=["이번 주는 버텨낸 것만으로 충분해. 개수를 줄였으니 리듬부터 되찾자.","느린 주도 숲의 일부야. 작은 완료를 쌓자.","자책 금지. 이끼는 천천히, 그러나 반드시 자란다."];
+const KEY="mossmori_v1";
+/* ===== 저장소 ===== */
+const mem={};
+const store={
+ async get(k){try{if(window.storage&&window.storage.get){const r=await window.storage.get(k);return r&&r.value!==undefined?r.value:r;}}catch(e){}try{return localStorage.getItem(k);}catch(e){}return mem[k];},
+ async set(k,v){try{if(window.storage&&window.storage.set){await window.storage.set(k,v);return;}}catch(e){}try{localStorage.setItem(k,v);return;}catch(e){}mem[k]=v;},
+ async del(k){try{if(window.storage&&window.storage.delete){await window.storage.delete(k);return;}}catch(e){}try{localStorage.removeItem(k);return;}catch(e){}delete mem[k];}
+};
+let state=null,viewIdx=0,showEdit=false,editIdx=-1,resetArmed=false;
+const root=document.getElementById("hud-root");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const DAYOFF={"월":0,"화":1,"수":2,"목":3,"금":4,"토":5,"일":6};
+function save(){store.set(KEY,JSON.stringify(state));}
+function weekStart(n){const s=new Date(START_ISO);s.setDate(s.getDate()+(n-1)*7);return s;}
+function realWeekN(){const t=new Date();t.setHours(0,0,0,0);const s=new Date(START_ISO);const d=Math.floor((t-s)/864e5);return d<0?0:Math.floor(d/7)+1;}
+function fmt(d){return (d.getMonth()+1)+"/"+d.getDate();}
+function dayDate(weekN,day){const d=weekStart(weekN);d.setDate(d.getDate()+DAYOFF[day]);return fmt(d);}
+function phaseOf(n){return PHASES.find(p=>n>=p.from&&n<=p.to)||PHASES[PHASES.length-1];}
+function weekRate(w){if(!w.quests.length)return 0;return Math.round(w.quests.filter(q=>q.done).length/w.quests.length*100);}
+function statXp(){const xp={cert:0,port:0,resume:0,interview:0};state.weeks.forEach(w=>w.quests.forEach(q=>{if(q.done)xp[q.stat]+=XP[q.d];}));return xp;}
+function doneCount(cat){const s=new Set();state.weeks.forEach(w=>w.quests.forEach(q=>{if(q.done&&q.stat===cat)s.add(q.t);}));return s.size;}
+function expected(cat,n){if(n<=0)return 0;const a=EXPECT[cat];for(let i=1;i<a.length;i++){if(n<=a[i][0]){const[w0,v0]=a[i-1],[w1,v1]=a[i];return Math.round(v0+(v1-v0)*(n-w0)/(w1-w0));}}return a[a.length-1][1];}
+function overallPct(){const xp=statXp();let s=0;STATS.forEach(t=>{s+=Math.min(100,xp[t.id]/t.goal*100);});return Math.round(s/STATS.length);}
+function questCount(){const h=state.setup.days.length*state.setup.hours;return Math.max(4,Math.min(12,Math.round(h/2.2)));}
+function donePortTitles(){const s=new Set();state.weeks.forEach(w=>w.quests.forEach(q=>{if(q.done&&q.stat==="port")s.add(q.t);}));return s;}
+function pickRotated(pool,n,excl,weekN){const out=[];const L=pool.length;for(let k=0;k<L&&out.length<n;k++){const p=pool[(k+(weekN-1))%L];if(excl.has(p.t))continue;out.push(p);excl.add(p.t);}return out;}
+function genQuests(weekN,n){
+ const ph=phaseOf(weekN);
+ const out=[];const excl=new Set();
+ const donePort=donePortTitles();
+ const want={};let assigned=0;
+ STATS.forEach(st=>{want[st.id]=Math.round(n*ph.mix[st.id]);assigned+=want[st.id];});
+ if(assigned<n)want.cert+=n-assigned;
+ PORT_SEQ.filter(p=>!donePort.has(p.t)).slice(0,Math.min(want.port,2)).forEach(p=>{out.push({t:p.t,stat:"port",d:p.d,done:false});excl.add(p.t);});
+ pickRotated(CERT_POOL[ph.certTag],want.cert,excl,weekN).forEach(p=>out.push({t:p.t,stat:"cert",d:p.d,done:false}));
+ pickRotated(RESUME_POOL,want.resume,excl,weekN).forEach(p=>out.push({t:p.t,stat:"resume",d:p.d,done:false}));
+ pickRotated(INTERVIEW_POOL,want.interview,excl,weekN).forEach(p=>out.push({t:p.t,stat:"interview",d:p.d,done:false}));
+ while(out.length<n){const extra=CERT_POOL[ph.certTag].find(p=>!excl.has(p.t));if(!extra)break;out.push({t:extra.t,stat:"cert",d:extra.d,done:false});excl.add(extra.t);}
+ out.forEach((q,i)=>{q.day=state.setup.days[i%state.setup.days.length];});
+ return out;
+}
+function newWeek(){
+ const cur=state.weeks[state.weeks.length-1];let msg="";
+ let n=questCount();
+ if(cur){const r=weekRate(cur);
+  if(r>=TH_UP){n=Math.min(12,n+1);msg="levelup";}
+  else if(r<TH_DOWN){n=Math.max(3,Math.round(n*0.6));msg=ENCOURAGE[Math.floor(Math.random()*ENCOURAGE.length)];}
+ }
+ const wn=state.weeks.length+1;
+ state.weeks.push({n:wn,quests:genQuests(wn,n)});
+ viewIdx=state.weeks.length-1;save();render();
+ if(msg==="levelup")showLevelUp();else if(msg)showToast(msg);
+}
+function showLevelUp(){const o=document.createElement("div");o.style.cssText="position:absolute;inset:0;background:rgba(140,195,116,.35);display:flex;align-items:center;justify-content:center;border-radius:12px;z-index:5";o.innerHTML='<div class="panel" style="text-align:center;animation:pop .5s ease-out"><div style="font-size:40px">🌲✨</div><div style="font-size:20px;color:#4c7d33;margin-top:4px">SUCCESS!</div><div style="color:#7a5230;margin-top:6px;font-size:12px">달성률 80% 돌파! 숲이 한 뼘 더 자랐다</div></div>';root.appendChild(o);setTimeout(()=>o.remove(),2200);}
+function showToast(m){const o=document.createElement("div");o.className="panel";o.style.cssText+="margin-top:12px;font-size:12px;color:#7a5230";o.textContent="🍄 "+m;root.appendChild(o);setTimeout(()=>o.remove(),5000);}
+function xpFloat(x,y,amt){const o=document.createElement("div");o.className="xp-float";o.textContent="+"+amt+" XP 🌰";o.style.left=Math.max(0,x-30)+"px";o.style.top=Math.max(0,y-20)+"px";root.appendChild(o);setTimeout(()=>o.remove(),1200);}
+function showRoadmap(){
+ const doneT=new Set();if(state&&state.weeks)state.weeks.forEach(w=>w.quests.forEach(q=>{if(q.done)doneT.add(q.t);}));
+ const item=(t,d,done)=>`<div style="display:flex;gap:6px;font-size:12px;padding:3px 0;color:${done?"#8fae6a":"#4a3220"}"><span>${done?"✅":"⬜"}</span><span style="flex:1;${done?"text-decoration:line-through":""}">${esc(t)}</span><span style="color:#a97c50;font-size:10px">${"★".repeat(d)}</span></div>`;
+ const sec=(title,arr)=>`<div style="margin-bottom:12px"><div style="font-size:13px;color:#7a5230;border-bottom:2px solid #c9a86a;padding-bottom:3px;margin-bottom:5px">${title}</div>${arr.map(p=>item(p.t,p.d,doneT.has(p.t))).join("")}</div>`;
+ const o=document.createElement("div");
+ o.style.cssText="position:fixed;inset:0;background:rgba(40,30,15,.55);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px";
+ o.innerHTML=`<div class="panel" style="max-width:560px;width:100%;max-height:82vh;overflow-y:auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+   <div class="sign" style="font-size:13px;padding:5px 12px">📖 전체 로드맵 계획표</div>
+   <button id="mapClose" class="wood">닫기 ✕</button>
+  </div>
+  ${sec("🧱 포트폴리오 · 순서대로 진행 (P1: ~9/12 · P2: ~9/30)",PORT_SEQ)}
+  ${sec("📜 자격증 · SQLD (1단계 · ~8/22 시험)",CERT_POOL.sqld)}
+  ${sec("📜 자격증 · AWS CLF (2~3단계 · 8/23~)",CERT_POOL.aws)}
+  ${sec("📜 자격증 · 정처기 실기 (4단계 · 10/24 시험)",CERT_POOL.jeongcheo)}
+  ${sec("📋 이력서 준비 (3단계~ · 9/13부터 등장)",RESUME_POOL)}
+  ${sec("🎤 면접 준비 (3~4단계 · 9/13부터 등장)",INTERVIEW_POOL)}
+ </div>`;
+ document.body.appendChild(o);
+ o.querySelector("#mapClose").onclick=()=>o.remove();
+ o.onclick=e=>{if(e.target===o)o.remove();};
+}
+function renderSetup(){
+ const first=!state||!state.weeks||!state.weeks.length;
+ const lastW=first?null:state.weeks[state.weeks.length-1];
+ const nextN=first?1:lastW.n+1;
+ const pct=first?0:overallPct();
+ let lvIdx=1;LEVELS.forEach((x,i)=>{if(pct>=x.pct)lvIdx=i+1;});
+ const prevDays=(state&&state.setup)?state.setup.days:["수","목","금","토"];
+ const prevHours=(state&&state.setup)?state.setup.hours:5;
+ let doneMsg="";
+ if(!first){
+  const r=weekRate(lastW);
+  const sub=r>=TH_UP?'<div style="font-size:11px;color:#4c7d33;margin-top:6px">🌲 80% 돌파! 다음 주는 조금 더 도전적으로</div>':(r<TH_DOWN?'<div style="font-size:11px;color:#c0392b;margin-top:6px">🍄 '+ENCOURAGE[Math.floor(Math.random()*ENCOURAGE.length)]+'</div>':'<div style="font-size:11px;color:#8a7250;margin-top:6px">🌿 꾸준함이 숲을 만든다</div>');
+  doneMsg=`<div style="text-align:center;margin-bottom:12px"><div class="sign" style="font-size:14px">🎉 WEEK ${lastW.n} 모험 완료! 달성률 ${r}%</div>${sub}</div>`;
+ }
+ root.innerHTML=`${doneMsg}<div class="panel" style="max-width:520px;margin:0 auto;position:relative">
+ <img src="mascot.png" alt="" style="position:absolute;right:12px;bottom:56px;width:96px;image-rendering:pixelated;pointer-events:none">
+ <div style="text-align:center;margin-bottom:12px">
+  <div style="font-size:34px">${MASCOTS[lvIdx-1]}</div>
+  <div style="font-size:13px;color:#4c7d33;margin-top:2px">LV.${lvIdx} ${LEVELS[lvIdx-1].title}</div>
+  <div style="font-size:11px;color:#8a7250;margin-top:2px">XP ${pct}/100</div>
+ </div>
+ <div style="font-size:12px;color:#7a5230;margin-bottom:8px">공부할 요일 선택</div>
+ <div id="daychips" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+ <div style="font-size:12px;color:#7a5230;margin:16px 0 6px">하루 몇 시간?</div>
+ <input id="hrs" type="number" min="1" max="10" value="${prevHours}" style="width:90px;background:#fdf6dd;color:#4a3220;border:3px solid #a97c50;border-radius:6px;padding:7px;font-size:13px"> <span style="font-size:12px;color:#8a7250">시간 / 일</span>
+ <div style="margin-top:18px;text-align:center"><button id="startBtn" class="green-btn" style="font-size:15px;padding:10px 30px">🌰 ${nextN}주차 모험 시작</button></div>
+ </div>`;
+ const DAYS=["월","화","수","목","금","토","일"];let sel=new Set(prevDays);
+ const chips=document.getElementById("daychips");
+ function drawChips(){chips.innerHTML="";DAYS.forEach(d=>{const b=document.createElement("button");b.textContent=d;const on=sel.has(d);b.style.cssText=`width:40px;height:40px;border-radius:8px;border:3px solid ${on?"#4c7d33":"#a97c50"};background:${on?"#8bc34a":"#fdf6dd"};color:${on?"#fff":"#8a7250"};cursor:pointer;font-size:13px;font-family:inherit`;b.onclick=()=>{sel.has(d)?sel.delete(d):sel.add(d);drawChips();};chips.appendChild(b);});}
+ drawChips();
+ document.getElementById("startBtn").onclick=()=>{
+  const hours=Math.max(1,Math.min(10,parseInt(document.getElementById("hrs").value)||5));
+  if(!sel.size)return;
+  const days=["월","화","수","목","금","토","일"].filter(d=>sel.has(d));
+  let wasUp=false;
+  if(first){state={setup:{days,hours},weeks:[]};}
+  else{state.setup.days=days;state.setup.hours=hours;}
+  let n=questCount();
+  if(!first){const r=weekRate(lastW);
+   if(r>=TH_UP){n=Math.min(12,n+1);wasUp=true;}
+   else if(r<TH_DOWN){n=Math.max(3,Math.round(n*0.6));}
+  }
+  state.awaitSetup=false;
+  state.weeks.push({n:nextN,quests:genQuests(nextN,n)});
+  viewIdx=state.weeks.length-1;save();render();
+  if(wasUp)showLevelUp();
+ };
+}
+function render(){
+ if(!state||state.awaitSetup||!state.weeks.length){renderSetup();return;}
+ const w=state.weeks[viewIdx],cur=viewIdx===state.weeks.length-1;
+ const ph=phaseOf(w.n);
+ const rw=realWeekN();
+ const pct=overallPct(),xp=statXp();
+ let lvIdx=1;LEVELS.forEach((x,i)=>{if(pct>=x.pct)lvIdx=i+1;});
+ let arrow="";
+ if(state.weeks.length>=2){const a=weekRate(state.weeks[state.weeks.length-1]),b=weekRate(state.weeks[state.weeks.length-2]);arrow=a>b?'<span style="color:#4c7d33">▲</span>':a<b?'<span style="color:#c0392b">▼</span>':'<span style="color:#8a7250">—</span>';}
+ const statNames={cert:"자격증",port:"포트폴리오",resume:"이력서",interview:"면접"};
+ const statIcon={cert:"📜",port:"🧱",resume:"📋",interview:"🎤"};
+ let hearts=BADGES.map((b,i)=>{
+  const open=pct>=b.pct;
+  const prev=i===0?0:BADGES[i-1].pct;
+  const fill=open?100:Math.max(0,Math.min(100,Math.round((pct-prev)/(b.pct-prev)*100)));
+  return `<div style="text-align:center">
+   <div style="font-size:26px;position:relative;display:inline-block;${open?"animation:pop .5s ease-out":""}">
+    <span style="filter:grayscale(1);opacity:.35">💚</span>
+    <span style="position:absolute;left:0;bottom:0;overflow:hidden;height:${fill}%;display:flex;align-items:flex-end">💚</span>
+   </div>
+   <div style="font-size:10px;color:${open?"#4c7d33":"#8a7250"}">${b.pct}%<br>${b.name}</div>
+  </div>`;
+ }).join("");
+ let acorns=STATS.map(st=>{
+  const done=doneCount(st.id),exp=expected(st.id,rw),diff=done-exp;
+  const stat=rw<=0?`<span style="color:#8a7250">시작 전</span>`:diff>0?`<span style="color:#4c7d33">▲ ${diff} 앞섬</span>`:diff===0?`<span style="color:#8a7250">정상</span>`:`<span style="color:#c0392b">⚠ ${-diff} 지연</span>`;
+  let row="";
+  for(let k=0;k<st.total;k++){
+   const filled=k<done, target=k<exp;
+   row+=`<span style="font-size:13px;${filled?"":"filter:grayscale(1);opacity:"+(target?".6":".22")}">🌰</span>`;
+  }
+  return `<div style="margin-bottom:9px">
+   <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span style="color:#4a3220">${statIcon[st.id]} ${st.name}</span><span>${stat}</span></div>
+   <div style="line-height:1.2">${row}</div>
+   <div style="font-size:10px;color:#8a7250">모은 도토리 ${done} / ${st.total}</div>
+  </div>`;
+ }).join("");
+ const rate=weekRate(w);
+ const ws=weekStart(w.n),we=new Date(ws);we.setDate(we.getDate()+6);
+ const byDay={};state.setup.days.forEach(d=>byDay[d]=[]);
+ w.quests.forEach((q,i)=>{(byDay[q.day]=byDay[q.day]||[]).push({q,i});});
+ let dayHtml=Object.keys(byDay).map(d=>{
+  if(!byDay[d].length)return "";
+  const items=byDay[d].map(({q,i})=>{
+   if(cur&&showEdit&&editIdx===i){
+    return `<div style="display:flex;gap:6px;margin-bottom:6px"><input id="editT" value="${esc(q.t)}" style="flex:1;background:#fdf6dd;color:#4a3220;border:3px solid #6fae4e;border-radius:6px;padding:6px;font-size:12px"><button data-saveedit="${i}" class="green-btn" style="padding:4px 10px;font-size:11px">저장</button></div>`;
+   }
+   return `<div class="qcard${q.done?" done":""}">
+   <input type="checkbox" data-i="${i}" ${q.done?"checked":""} ${cur?"":"disabled"} style="accent-color:#6fae4e;width:17px;height:17px;cursor:pointer">
+   <span style="flex:1;font-size:12px;color:${q.done?"#8fae6a":"#4a3220"};text-decoration:${q.done?"line-through":"none"}">${esc(q.t)}</span>
+   <span style="font-size:10px;color:#7a5230;background:#f0e2bb;border:2px solid #c9a86a;border-radius:6px;padding:1px 6px">${statIcon[q.stat]}${statNames[q.stat]}</span>
+   <span style="font-size:10px;color:#a97c50">${"★".repeat(q.d)}</span>
+   ${cur&&showEdit?`<button data-ren="${i}" style="background:none;border:none;color:#8a7250;cursor:pointer;font-size:12px">✎</button><button data-del="${i}" style="background:none;border:none;color:#c0392b;cursor:pointer;font-size:12px">✕</button>`:""}
+  </div>`;}).join("");
+  return `<div style="margin-bottom:8px"><div style="font-size:12px;color:#fdf6dd;margin-bottom:4px">🌿 ${d}요일 <span style="opacity:.7">· ${dayDate(w.n,d)}</span></div>${items}</div>`;
+ }).join("");
+ let editForm="";
+ if(cur&&showEdit){
+  const dayOpts=state.setup.days.map(d=>`<option value="${d}">${d} (${dayDate(w.n,d)})</option>`).join("");
+  const statOpts=STATS.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  editForm=`<div style="border-top:3px dashed #a97c50;margin-top:10px;padding-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+   <input id="nqT" placeholder="새 퀘스트 내용" style="flex:1;min-width:160px;background:#fdf6dd;color:#4a3220;border:3px solid #a97c50;border-radius:6px;padding:7px;font-size:12px">
+   <select id="nqS" style="background:#fdf6dd;color:#4a3220;border:3px solid #a97c50;border-radius:6px;padding:6px;font-size:11px">${statOpts}</select>
+   <select id="nqD" style="background:#fdf6dd;color:#4a3220;border:3px solid #a97c50;border-radius:6px;padding:6px;font-size:11px"><option value="1">★</option><option value="2">★★</option><option value="3">★★★</option></select>
+   <select id="nqDay" style="background:#fdf6dd;color:#4a3220;border:3px solid #a97c50;border-radius:6px;padding:6px;font-size:11px">${dayOpts}</select>
+   <button id="nqAdd" class="green-btn" style="padding:6px 12px;font-size:12px">추가</button>
+  </div>`;
+ }
+ root.innerHTML=`
+ <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+  <div style="display:flex;gap:6px;align-items:center">
+   <div class="sign" style="font-size:13px;padding:6px 14px">WEEK ${w.n} · LV.${lvIdx} ${arrow}</div>
+   <button id="mapBtn" class="wood" title="전체 로드맵 보기">📖</button>
+  </div>
+  <div style="display:flex;gap:6px">
+   <button id="prevW" class="wood" ${viewIdx===0?"disabled":""}>◀ 지난주</button>
+   <button id="nextW" class="wood" ${cur?"disabled":""}>다음 ▶</button>
+   <button id="resetBtn" class="wood" style="${resetArmed?"background:#a33b2e;border-color:#6d251c":""}">${resetArmed?"정말 초기화?":"초기화"}</button>
+  </div>
+ </div>
+ <div style="font-size:11px;color:#4a3220;background:#e8d9ae;border:3px solid #a97c50;border-radius:8px;padding:5px 10px;display:inline-block;margin-bottom:10px">🗺 ${ph.name} <span style="color:#8a7250">(${ph.range})</span></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div class="panel">
+   <div style="text-align:center">
+    <div style="font-size:52px;animation:pop .5s ease-out">${MASCOTS[lvIdx-1]}</div>
+    <div style="font-size:12px;color:#4c7d33;margin-top:2px">LV.${lvIdx} ${LEVELS[lvIdx-1].title}</div>
+   </div>
+   <div style="display:flex;justify-content:space-between;font-size:11px;color:#7a5230;margin:10px 0 3px"><span>XP (전체 달성률)</span><span>${pct}/100</span></div>
+   <div style="height:14px;background:#d7c9a3;border:3px solid #7a5230;border-radius:6px;overflow:hidden"><div style="height:100%;width:${pct}%;background:#8bc34a"></div></div>
+   <div style="display:flex;justify-content:space-around;margin-top:12px">${hearts}</div>
+   <div style="border-top:3px dashed #c9a86a;margin-top:12px;padding-top:8px;display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:11px;color:#7a5230">이번 주 달성률</span><span style="font-size:18px;color:${rate>=TH_UP?"#4c7d33":rate>=TH_DOWN?"#4a3220":"#c0392b"}">${rate}%</span></div>
+  </div>
+  <div class="panel">
+   <div style="font-size:12px;color:#4a3220;margin-bottom:8px">🌰 도토리 수집 현황 · ${rw<=0?"아직 시작 전 (7/27~)":"오늘 기준 "+rw+"주차"}</div>
+   ${acorns}
+  </div>
+ </div>
+ <div class="board" style="margin-top:14px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:6px">
+   <div class="sign" style="font-size:13px;padding:5px 14px">🍄 ${cur?"이번 주 퀘스트":"WEEK "+w.n+" 기록"} · ${fmt(ws)}~${fmt(we)}</div>
+   <div style="display:flex;gap:6px">
+   ${cur?`<button id="editBtn" class="wood">퀘스트 편집${showEdit?" 닫기":""}</button><button id="genBtn" class="green-btn">🎉 모험 완료</button>`:""}
+   </div>
+  </div>
+  ${dayHtml}
+  ${editForm}
+ </div>`;
+ root.querySelectorAll("input[type=checkbox]").forEach(cb=>{cb.onchange=(ev)=>{
+  const q=w.quests[+cb.dataset.i];q.done=cb.checked;save();
+  if(cb.checked){const r=root.getBoundingClientRect();const cr=ev.target.getBoundingClientRect();xpFloat(cr.left-r.left+20,cr.top-r.top,XP[q.d]);setTimeout(render,600);}else render();
+ };});
+ root.querySelectorAll("[data-del]").forEach(b=>{b.onclick=()=>{w.quests.splice(+b.dataset.del,1);editIdx=-1;save();render();};});
+ root.querySelectorAll("[data-ren]").forEach(b=>{b.onclick=()=>{editIdx=+b.dataset.ren;render();};});
+ root.querySelectorAll("[data-saveedit]").forEach(b=>{b.onclick=()=>{const v=document.getElementById("editT").value.trim();if(v)w.quests[+b.dataset.saveedit].t=v;editIdx=-1;save();render();};});
+ document.getElementById("prevW").onclick=()=>{if(viewIdx>0){viewIdx--;resetArmed=false;render();}};
+ document.getElementById("nextW").onclick=()=>{if(viewIdx<state.weeks.length-1){viewIdx++;resetArmed=false;render();}};
+ document.getElementById("resetBtn").onclick=()=>{
+  if(!resetArmed){resetArmed=true;render();setTimeout(()=>{if(resetArmed){resetArmed=false;render();}},4000);return;}
+  resetArmed=false;store.del(KEY);state=null;viewIdx=0;showEdit=false;editIdx=-1;render();
+ };
+ const g=document.getElementById("genBtn");if(g)g.onclick=()=>{state.awaitSetup=true;save();render();};
+ const mp=document.getElementById("mapBtn");if(mp)mp.onclick=showRoadmap;
+ const e=document.getElementById("editBtn");if(e)e.onclick=()=>{showEdit=!showEdit;editIdx=-1;render();};
+ const a=document.getElementById("nqAdd");if(a)a.onclick=()=>{
+  const t=document.getElementById("nqT").value.trim();if(!t)return;
+  w.quests.push({t,stat:document.getElementById("nqS").value,d:+document.getElementById("nqD").value,done:false,day:document.getElementById("nqDay").value});
+  save();render();
+ };
+}
+(async()=>{
+ try{const raw=await store.get(KEY);if(raw)state=JSON.parse(raw);}catch(e){}
+ render();
+})();
+</script>
+</body>
+</html>
