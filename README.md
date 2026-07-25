@@ -1,4 +1,4 @@
-# 🌱 MOSSMORI Quest Planner
+# 🌱 MOSS Quest Planner
 
 > 매일의 퀘스트를 깨며 성장의 숲을 가꿔나가는 준비 플래너
 
